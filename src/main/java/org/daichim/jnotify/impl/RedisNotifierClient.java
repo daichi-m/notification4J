@@ -59,10 +59,10 @@ import java.util.stream.Collectors;
 public class RedisNotifierClient implements NotifierClient, NotificationGroupClient {
 
     public static final int SCAN_BATCH_SIZE = 100;
-    static final String ID_KEY = "LAST_NOTIFICATION_ID";
-    static final String CALLBACK_CHANNEL = "KEYS_CHANGED";
-    static final String NOTIFICATION_PREFIX = "NOTFN_";
-    static final String NIL = "nil";
+    public static final String ID_KEY = "LAST_NOTIFICATION_ID";
+    public static final String CALLBACK_CHANNEL = "KEYS_CHANGED";
+    public static final String NOTIFICATION_PREFIX = "NOTFN_";
+    public static final String NIL = "nil";
     private JedisPool jedisPool;
     private ThreadLocal<ObjectWriter> serializer;
     private ThreadLocal<ObjectReader> deserializer;
@@ -242,7 +242,8 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      * @throws NotificationException In case of issue with the notifications.
      * @throws JedisException        If there is any issue with Redis.
      */
-    private void updateStatusWithException(String[] notificationIds, String user, Notification.Status status)
+    private void updateStatusWithException(String[] notificationIds, String user,
+                                           Notification.Status status)
         throws NotificationException, JedisException {
         try (Jedis jedis = jedisPool.getResource()) {
             String redisUser = redisSafeUsername(user);
