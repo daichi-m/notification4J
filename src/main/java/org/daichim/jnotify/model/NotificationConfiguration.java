@@ -7,6 +7,8 @@ import lombok.experimental.Accessors;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
+import java.util.List;
 
 @Getter
 @Setter
@@ -17,6 +19,10 @@ public class NotificationConfiguration {
     private String redisHost;
 
     private int redisPort;
+
+    private List<String> redisSentinels;
+
+    private String sentinelMaster;
 
     private String redisPassword;
 
@@ -41,5 +47,7 @@ public class NotificationConfiguration {
     private long maxBackOffDelayMillis = 10_000;
 
     private int maxAttempts = 5;
+
+    private int purgeIntervalSeconds = 1800;
 
 }

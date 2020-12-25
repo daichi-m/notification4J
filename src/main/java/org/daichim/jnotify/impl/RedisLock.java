@@ -24,29 +24,26 @@ public class RedisLock {
     public static final String REDIS_OK = "OK";
 
     @Inject
-    private JedisProducer jedisProducer;
-
-    private JedisPool jedisPool;
+    private JedisFactory jedisFactory;
 
     private ScheduledExecutorService threadPool;
 
     @PostConstruct
     public void init() {
-        this.jedisPool = jedisProducer.get();
         this.threadPool = Executors.newScheduledThreadPool(10);
     }
 
     /**
      * Try acquiring the lock in Redis with a given timeout for the locks expiry.
      *
-     * @param timeout The expiry of the lock
+     * @param timeout The expiry of the lock in milliseconds
      *
      * @return {@literal true} is the lock was acquired, {@literal false} otherwise.
      *
      * @throws JedisException In case of issues with Redis.
      */
-    private boolean tryLock(long timeout) throws JedisException {
-        try (Jedis jedis = jedisPool.getResource()) {
+    public boolean tryLock(long timeout) throws JedisException {
+        try (Jedis jedis = jedisFactory.get()) {
             SetParams params = new SetParams().nx().px(timeout);
             String res = jedis.set(LOCK_KEY, LOCK_VAL, params);
             if (!res.equals(REDIS_OK)) {
@@ -63,8 +60,8 @@ public class RedisLock {
      *
      * @throws JedisException In case of issues with Redis.
      */
-    private boolean tryUnlock() throws JedisException {
-        try (Jedis jedis = jedisPool.getResource()) {
+    public boolean tryUnlock() throws JedisException {
+        try (Jedis jedis = jedisFactory.get()) {
             String res = jedis.get(LOCK_KEY);
             if (!res.equals(LOCK_VAL)) {
                 return false;

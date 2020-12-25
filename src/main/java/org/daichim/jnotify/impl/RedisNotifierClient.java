@@ -5,13 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.google.common.collect.ImmutableMap;
-import org.daichim.jnotify.ErrorHandler;
-import org.daichim.jnotify.NotificationGroupClient;
-import org.daichim.jnotify.NotifierClient;
-import org.daichim.jnotify.exception.NotificationException;
-import org.daichim.jnotify.model.Notification;
-import org.daichim.jnotify.model.NotificationConfiguration;
-import org.daichim.jnotify.mybatis.UserDataMapper;
 import io.github.resilience4j.core.IntervalFunction;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
@@ -19,16 +12,27 @@ import io.vavr.CheckedRunnable;
 import io.vavr.control.Try;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.daichim.jnotify.ErrorHandler;
+import org.daichim.jnotify.NotificationGroupClient;
+import org.daichim.jnotify.NotifierClient;
+import org.daichim.jnotify.exception.NotificationException;
+import org.daichim.jnotify.model.Notification;
+import org.daichim.jnotify.model.NotificationConfiguration;
+import org.daichim.jnotify.mybatis.UserDataMapper;
+import org.quartz.JobBuilder;
+import org.quartz.JobDetail;
+import org.quartz.Scheduler;
+import org.quartz.SchedulerException;
+import org.quartz.SimpleScheduleBuilder;
+import org.quartz.Trigger;
+import org.quartz.TriggerBuilder;
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
-import redis.clients.jedis.ScanParams;
-import redis.clients.jedis.ScanResult;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 import redis.clients.jedis.exceptions.JedisException;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 import javax.inject.Named;
 import java.io.*;
@@ -40,11 +44,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -58,14 +60,11 @@ import java.util.stream.Collectors;
 @Named
 public class RedisNotifierClient implements NotifierClient, NotificationGroupClient {
 
-    public static final int SCAN_BATCH_SIZE = 100;
     public static final String ID_KEY = "LAST_NOTIFICATION_ID";
     public static final String CALLBACK_CHANNEL = "KEYS_CHANGED";
     public static final String NOTIFICATION_PREFIX = "NOTFN_";
     public static final String NIL = "nil";
-    private JedisPool jedisPool;
-    private ThreadLocal<ObjectWriter> serializer;
-    private ThreadLocal<ObjectReader> deserializer;
+
     private ErrorHandler defaultErrorHandler;
 
     @Inject
@@ -78,16 +77,24 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
     private NotificationConfiguration configuration;
 
     @Inject
-    private JedisProducer jedisProducer;
+    private JedisFactory jedisFactory;
+
+    @Inject
+    private Scheduler quartzScheduler;
+
+    @Inject
+    private NotificationSerDe serde;
 
     @PostConstruct
-    public void init() {
-        serializer =
-            ThreadLocal.withInitial(() -> this.objectMapper.writerFor(Notification.class));
-        deserializer =
-            ThreadLocal.withInitial(() -> this.objectMapper.readerFor(Notification.class));
-        this.jedisPool = jedisProducer.get();
+    public void init() throws Exception {
         this.defaultErrorHandler = ex -> log.error("Error in handling request", ex);
+        this.quartzScheduler.start();
+        this.initializePurgeJob();
+    }
+
+    @PreDestroy
+    public void cleanup() throws Exception {
+        this.quartzScheduler.shutdown(true);
     }
 
     /**
@@ -95,7 +102,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      */
     @Override
     public void notifyUsers(final ErrorHandler onError, final Notification notification,
-        String... users) {
+                            String... users) {
 
         List<String> redisUserKeys = Arrays.stream(users)
             .map(this::redisSafeUsername)
@@ -110,7 +117,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      */
     @Override
     public void notifyGroup(ErrorHandler onError, Notification notification, String userGroup,
-        Map<String, Object> queryParams) {
+                            Map<String, Object> queryParams) {
 
         CheckedRunnable runnable = () -> {
             String queryTemplate = userDataMapper.getUserGroupQuery(userGroup);
@@ -134,7 +141,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      */
     @Override
     public void updateStatus(ErrorHandler onError, String[] notificationIds,
-        String user, Notification.Status updatedStatus) {
+                             String user, Notification.Status updatedStatus) {
 
         NotificationException wrappedException = null;
         CheckedRunnable runnable = () -> {
@@ -147,7 +154,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
     }
 
     @Override
-    public CompletionStage<Collection<Notification>> getNotifications(
+    public CompletableFuture<Collection<Notification>> getNotifications(
         ErrorHandler onError, String user) {
 
         CompletableFuture<Collection<Notification>> completion = new CompletableFuture<>();
@@ -207,12 +214,12 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
     private void writeToRedis(Notification notification, List<String> users)
         throws JedisException, Exception {
 
-        try (Jedis jedis = jedisPool.getResource()) {
+        try (Jedis jedis = jedisFactory.get()) {
             Long val = jedis.incr(ID_KEY);
             notification.setId(Long.toString(val));
             setDefaults(notification);
 
-            Optional<String> json = safeSerialize(notification);
+            Optional<String> json = serde.safeSerialize(notification);
             if (!json.isPresent()) {
                 throw new NotificationException("Failed to convert to JSON");
             }
@@ -245,7 +252,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
     private void updateStatusWithException(String[] notificationIds, String user,
                                            Notification.Status status)
         throws NotificationException, JedisException {
-        try (Jedis jedis = jedisPool.getResource()) {
+        try (Jedis jedis = jedisFactory.get()) {
             String redisUser = redisSafeUsername(user);
             List<String> notfnJSONs = jedis.hmget(redisUser, notificationIds);
             if (CollectionUtils.isEmpty(notfnJSONs)) {
@@ -257,11 +264,11 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
                 if (StringUtils.isEmpty(json) || json.equals(NIL)) {
                     return;
                 }
-                Optional<Notification> notification = safeDeserialize(json);
+                Optional<Notification> notification = serde.safeDeserialize(json);
                 Optional<String> updatedJson = notification.map(n -> {
                     Notification.Status prevStatus = n.getStatus();
                     n.setStatus(status);
-                    Optional<String> tmp = safeSerialize(n);
+                    Optional<String> tmp = serde.safeSerialize(n);
                     log.debug("Update status for {} from {} to {}", n.getId(), prevStatus, status);
                     return tmp.orElse(null);
                 });
@@ -296,11 +303,11 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      */
     private Collection<Notification> getNotificationsSync(String userId)
         throws JedisException, NotificationException {
-        try (Jedis jedis = jedisPool.getResource()) {
+        try (Jedis jedis = jedisFactory.get()) {
             String redisKey = redisSafeUsername(userId);
             Map<String, String> notfnJsons = jedis.hgetAll(redisKey);
             Collection<Notification> notfns = notfnJsons.values().stream()
-                .map(this::safeDeserialize)
+                .map(serde::safeDeserialize)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .filter(n -> (!n.isExpired() && !n.isDeleted()))
@@ -314,49 +321,20 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
         }
     }
 
-    /**
-     * Utility method to cleanup all expired notifications from Redis. This can be run under a cron
-     * job from a Java service.
-     */
-    public void cleanupNotifications() {
-
-        String cursor = ScanParams.SCAN_POINTER_START;
-        ScanParams params = new ScanParams()
-            .count(SCAN_BATCH_SIZE)
-            .match(NOTIFICATION_PREFIX + "*");
-
-        ScanResult<String> scanResult;
-        List<String> notificationKeys;
-        try (Jedis jedis = jedisPool.getResource()) {
-            do {
-                scanResult = jedis.scan(cursor, params);
-                notificationKeys = scanResult.getResult();
-                cursor = scanResult.getCursor();
-                log.debug("Cleanup of notification for cursor: {} -> {} keys",
-                    cursor, notificationKeys.size());
-
-                notificationKeys.forEach(k -> {
-                    Map<String, String> allNotfn = jedis.hgetAll(k);
-                    String[] idsToExpire = allNotfn.values().stream()
-                        .map(this::safeDeserialize)
-                        .filter(notfn -> notfn.isPresent() && shouldDelete(notfn.get()))
-                        .map(notfn -> notfn.get().getId())
-                        .toArray(String[]::new);
-
-                    long delCount = 0;
-                    if (ArrayUtils.isNotEmpty(idsToExpire)) {
-                        delCount = jedis.hdel(k, idsToExpire);
-                    }
-                    log.debug("Cleanup {} notification for key: {}", delCount, k);
-                });
-            } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
-        }
-    }
-
-    private boolean shouldDelete(Notification notification) {
-        ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
-        return notification.getExpiryAt().compareTo(now) <= 0
-            || notification.getStatus() == Notification.Status.DELETED;
+    private void initializePurgeJob() throws SchedulerException {
+        JobDetail purgeJob = JobBuilder.newJob()
+            .withIdentity("notification-purge")
+            .withDescription("Scheduled job to purge expired and deleted notifications from store")
+            .ofType(NotificationPurgeJob.class)
+            .requestRecovery(false)
+            .build();
+        Trigger purgeTrigger = TriggerBuilder.newTrigger()
+            .forJob(purgeJob)
+            .withSchedule(SimpleScheduleBuilder.simpleSchedule()
+                .withIntervalInSeconds(configuration.getPurgeIntervalSeconds()).repeatForever())
+            .startNow()
+            .build();
+        this.quartzScheduler.scheduleJob(purgeJob, purgeTrigger);
     }
 
     /**
@@ -390,45 +368,6 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      */
     private String redisSafeUsername(String username) {
         return NOTIFICATION_PREFIX + username.replaceAll("\\W", "_");
-    }
-
-    /**
-     * Deserialize a JSON to {@link Notification} without throwing exception
-     *
-     * @param json The JSON to deserialize
-     *
-     * @return The {@link Notification} object corresponding to the JSON, or {@link Optional#empty}
-     *     in case of errors.
-     */
-    private Optional<Notification> safeDeserialize(String json) {
-        try {
-            if (StringUtils.isEmpty(json)) {
-                return Optional.empty();
-            }
-            return Optional.of(deserializer.get().readValue(json));
-        } catch (IOException ex) {
-            log.warn("Deserialization error: {}", json, ex);
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * Serialize a {@link Notification} to JSON String without throwing exception
-     *
-     * @param notification The {@link Notification} object to convert to JSON
-     *
-     * @return The JSON String wrapped or {@link Optional#empty()} in case of errors.
-     */
-    private Optional<String> safeSerialize(Notification notification) {
-        try {
-            if (Objects.isNull(notification)) {
-                return Optional.empty();
-            }
-            return Optional.of(serializer.get().writeValueAsString(notification));
-        } catch (IOException ex) {
-            log.warn("Deserialization error: {}", notification, ex);
-            return Optional.empty();
-        }
     }
 
     private void setDefaults(final Notification notification) {

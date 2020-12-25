@@ -1,12 +1,10 @@
 package org.daichim.jnotify.utils;
 
-import com.sun.tools.javah.Gen;
 import com.thedeanda.lorem.Lorem;
 import com.thedeanda.lorem.LoremIpsum;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.daichim.jnotify.impl.RedisNotifierClient;
 import org.daichim.jnotify.model.Notification;
-import org.mockito.internal.matchers.Not;
 
 import java.lang.reflect.Field;
 import java.net.*;

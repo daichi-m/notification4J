@@ -20,6 +20,7 @@
         <guava.version>29.0-jre</guava.version>
         <failsafe.version>2.4.0</failsafe.version>
         <resilience4j.version>1.6.1</resilience4j.version>
+        <quartz.version>2.3.2</quartz.version>
 
         <!-- Test Versions -->
         <testng.version>6.14.3</testng.version>
@@ -98,6 +99,11 @@
             <groupId>io.github.resilience4j</groupId>
             <artifactId>resilience4j-retry</artifactId>
             <version>${resilience4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.quartz-scheduler</groupId>
+            <artifactId>quartz</artifactId>
+            <version>${quartz.version}</version>
         </dependency>
 
         <!-- Test Dependencies -->

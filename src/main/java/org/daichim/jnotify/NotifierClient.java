@@ -5,6 +5,7 @@ import org.daichim.jnotify.model.Notification;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -113,13 +114,13 @@ public interface NotifierClient {
      *                for the user.
      * @param user    The user whose notifications are required.
      *
-     * @return A {@link CompletionStage} which when complete returns a {@link Collection} of {@link
-     *     Notification} for the user which are not expired and not deleted.
+     * @return A {@link CompletableFuture} which when complete returns a {@link Collection} of
+     * {@link Notification} for the user which are not expired and not deleted.
      *
      * @throws UnsupportedOperationException If this method cannot be implemented for a specific
      *                                       backend.
      */
-    CompletionStage<Collection<Notification>> getNotifications(ErrorHandler onError, String user)
+    CompletableFuture<Collection<Notification>> getNotifications(ErrorHandler onError, String user)
         throws UnsupportedOperationException;
 
 
