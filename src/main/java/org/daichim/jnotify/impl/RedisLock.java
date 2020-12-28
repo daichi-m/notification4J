@@ -1,8 +1,8 @@
 package org.daichim.jnotify.impl;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.daichim.jnotify.exception.RedisLockException;
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.exceptions.JedisException;
 import redis.clients.jedis.params.SetParams;
 
@@ -10,11 +10,13 @@ import javax.annotation.PostConstruct;
 import javax.inject.Inject;
 import javax.inject.Named;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Named
 public class RedisLock {
@@ -42,11 +44,12 @@ public class RedisLock {
      *
      * @throws JedisException In case of issues with Redis.
      */
-    public boolean tryLock(long timeout) throws JedisException {
+    @VisibleForTesting
+    boolean tryLock(long timeout) throws JedisException {
         try (Jedis jedis = jedisFactory.get()) {
             SetParams params = new SetParams().nx().px(timeout);
             String res = jedis.set(LOCK_KEY, LOCK_VAL, params);
-            if (!res.equals(REDIS_OK)) {
+            if (!REDIS_OK.equals(res)) {
                 return false;
             }
         }
@@ -60,10 +63,11 @@ public class RedisLock {
      *
      * @throws JedisException In case of issues with Redis.
      */
-    public boolean tryUnlock() throws JedisException {
+    @VisibleForTesting
+    boolean tryUnlock() throws JedisException {
         try (Jedis jedis = jedisFactory.get()) {
             String res = jedis.get(LOCK_KEY);
-            if (!res.equals(LOCK_VAL)) {
+            if (!LOCK_VAL.equals(res)) {
                 return false;
             }
             jedis.del(LOCK_KEY);
@@ -82,30 +86,34 @@ public class RedisLock {
      *
      * @return The result of the {@link Callable}
      *
-     * @throws RedisLockException   In case there was an issue with acquiring or releasing the Redis
-     *                              lock.
-     * @throws ExecutionException   In case of issues in the {@link Callable} code.
-     * @throws InterruptedException If the {@link Callable} task got interrupted before it could
-     *                              complete it's execution.
+     * @throws RedisLockException In case there was an issue with acquiring or releasing the Redis
+     *                            lock.
+     * @throws ExecutionException In case of issues in the {@link Callable} code.
+     * @throws TimeoutException   If the {@link Callable} task got interrupted before it could
+     *                            complete it's execution.
      */
     public <V> V executeUnderLock(Callable<V> task, long timeout)
-        throws RedisLockException, ExecutionException, InterruptedException {
+        throws RedisLockException, ExecutionException, TimeoutException {
         boolean lock = tryLock(timeout);
         if (!lock) {
             throw new RedisLockException("Could not acquire redis lock");
         }
-        Future<V> future = threadPool.submit(task);
-        threadPool.schedule(() -> {
-            if (!future.isDone() && !future.isCancelled()) {
-                future.cancel(true);
+        try {
+            Future<V> future = threadPool.submit(task);
+            threadPool.schedule(() -> {
+                if (!future.isDone() && !future.isCancelled()) {
+                    future.cancel(true);
+                }
+            }, timeout, TimeUnit.MILLISECONDS);
+            V res = future.get(timeout, TimeUnit.MILLISECONDS);
+            boolean unlock = tryUnlock();
+            if (!unlock) {
+                throw new RedisLockException("Could not release redis lock");
             }
-        }, timeout, TimeUnit.MILLISECONDS);
-        V res = future.get();
-        boolean unlock = tryUnlock();
-        if (!unlock) {
-            throw new RedisLockException("Could not release redis lock");
+            return res;
+        } catch (CancellationException | InterruptedException ex) {
+            throw new TimeoutException("Timed out while running callable");
         }
-        return res;
     }
 
 }

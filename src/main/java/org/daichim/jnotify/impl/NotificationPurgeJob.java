@@ -17,6 +17,7 @@ import java.time.ZonedDateTime;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -39,8 +40,6 @@ public class NotificationPurgeJob implements Job {
     @Inject
     private RedisLock redisLock;
 
-    private JedisPool jedisPool;
-
     /**
      * Utility method to cleanup all expired notifications from Redis. This can be run under a cron
      * job from a Java service.
@@ -54,7 +53,7 @@ public class NotificationPurgeJob implements Job {
 
         ScanResult<String> scanResult;
         List<String> notificationKeys;
-        try (Jedis jedis = jedisPool.getResource()) {
+        try (Jedis jedis = jedisFactory.get()) {
             do {
                 scanResult = jedis.scan(cursor, params);
                 notificationKeys = scanResult.getResult();
@@ -91,20 +90,18 @@ public class NotificationPurgeJob implements Job {
     public void execute(JobExecutionContext context) throws JobExecutionException {
         Date fire = context.getFireTime();
         log.debug("Purge job fired at {}", fire);
-        boolean locked = false;
         try {
-            redisLock.tryLock(MILLISECONDS.convert(10, SECONDS));
-            locked = true;
-            purgeNotifications();
+            Callable<Void> purger = () -> {
+                purgeNotifications();
+                return null;
+            };
+            long timeout = MILLISECONDS.convert(10, SECONDS);
+            redisLock.executeUnderLock(purger, timeout);
             log.debug("Notifications has been purged, finishing job");
         } catch (Exception ex) {
             log.warn("Exception while purging notifications, will try again in next run: {}",
                 ex.getMessage());
             throw new JobExecutionException(ex);
-        } finally {
-            if (locked) {
-                redisLock.tryUnlock();
-            }
         }
     }
 }

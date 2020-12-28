@@ -1,16 +1,16 @@
 package org.daichim.jnotify.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.github.fppt.jedismock.RedisServer;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.google.common.collect.ImmutableMap;
+import lombok.AllArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.ArrayUtils;
 import org.daichim.jnotify.ErrorHandler;
 import org.daichim.jnotify.model.Notification;
 import org.daichim.jnotify.model.NotificationConfiguration;
 import org.daichim.jnotify.mybatis.UserDataMapper;
-import org.daichim.jnotify.utils.RedisSubscriber;
-import org.daichim.jnotify.utils.RedisSubscriber.Subscription;
-import org.daichim.jnotify.utils.RedisVerification;
-import org.daichim.jnotify.utils.RedisVerification.Verification;
 import org.daichim.jnotify.utils.TestUtils;
 import org.daichim.jnotify.utils.Wrapper;
 import org.mockito.InjectMocks;
@@ -21,33 +21,51 @@ import org.mockito.stubbing.Answer;
 import org.quartz.JobDetail;
 import org.quartz.Scheduler;
 import org.quartz.Trigger;
+import org.testng.ITestContext;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPubSub;
 import redis.clients.jedis.exceptions.JedisConnectionException;
+import redis.embedded.RedisServer;
 
-import java.io.*;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.daichim.jnotify.utils.TestUtils.randomNotification;
 import static org.daichim.jnotify.utils.TestUtils.randomUsername;
 import static org.daichim.jnotify.utils.TestUtils.redisUsername;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 @Slf4j
 public class RedisNotifierClientTest {
@@ -71,21 +89,20 @@ public class RedisNotifierClientTest {
     @InjectMocks
     RedisNotifierClient client;
 
-
     private RedisServer redisServer;
-    private RedisSubscriber redisSubscriber;
-    private RedisVerification verifier;
     private Jedis jedis;
 
-
-    private void initRedis() throws IOException {
-        this.redisServer = RedisServer.newRedisServer();
+    @SneakyThrows
+    private void initRedis() {
+        this.redisServer = RedisServer.builder()
+            .port(ThreadLocalRandom.current().nextInt(49152, 65535))
+            .build();
         this.redisServer.start();
         log.info("Mock redis server started at {}:{}",
-            redisServer.getHost(), redisServer.getBindPort());
+            "localhost", redisServer.ports().get(0));
         this.configuration = new NotificationConfiguration()
-            .setRedisHost(redisServer.getHost())
-            .setRedisPort(redisServer.getBindPort())
+            .setRedisHost("localhost")
+            .setRedisPort(redisServer.ports().get(0))
             .setRedisDatabase(0)
             .setRedisConnectionTimeout(1000)
             .setIdleRedisConnections(3)
@@ -99,26 +116,31 @@ public class RedisNotifierClientTest {
             .setDefaultSeverity(Notification.Severity.INFO);
     }
 
+    @SneakyThrows
+    public void initMocks() {
+        doNothing().when(quartzScheduler).start();
+        doReturn(new Date()).when(quartzScheduler)
+            .scheduleJob(any(JobDetail.class), any(Trigger.class));
+        doAnswer((Answer<Optional<String>>) inv -> {
+            Notification n = inv.getArgument(0);
+            return Optional.ofNullable(objectMapper.writeValueAsString(n));
+        }).when(serde).safeSerialize(any(Notification.class));
+        doAnswer((Answer<Optional<Notification>>) inv -> {
+            String json = inv.getArgument(0);
+            ObjectReader reader = objectMapper.readerFor(Notification.class);
+            return Optional.ofNullable(reader.readValue(json));
+        }).when(serde).safeDeserialize(anyString());
+    }
+
     @BeforeClass
-    private void initializeMocks() throws Exception {
+    @SneakyThrows
+    private void initializeMocks() {
         initRedis();
         this.objectMapper = new ObjectMapper();
-        this.jedis = new Jedis(redisServer.getHost(), redisServer.getBindPort());
-        this.redisSubscriber =
-            new RedisSubscriber(redisServer.getHost(), redisServer.getBindPort());
-        this.verifier = new RedisVerification(redisServer.getHost(), redisServer.getBindPort());
+        RedisServer redisServer = this.redisServer;
+        this.jedis = new Jedis("localhost", redisServer.ports().get(0));
         MockitoAnnotations.initMocks(this);
-        doNothing().when(quartzScheduler).start();
-        doReturn(new Date())
-            .when(quartzScheduler).scheduleJob(any(JobDetail.class), any(Trigger.class));
-        doAnswer(
-            (Answer<Optional<String>>) inv ->
-                Optional.ofNullable(objectMapper.writeValueAsString(inv.getArgument(0))))
-            .when(serde).safeSerialize(any(Notification.class));
-        doAnswer((Answer<Optional<Notification>>) inv ->
-            Optional.ofNullable(objectMapper.readerFor(Notification.class)
-                .readValue(inv.getArgument(0).toString())))
-            .when(serde).safeDeserialize(anyString());
+        this.initMocks();
         client.init();
     }
 
@@ -129,6 +151,50 @@ public class RedisNotifierClientTest {
         };
     }
 
+    private void verify(Map<Function<Jedis, Object>, Object> cmds) {
+        for (Map.Entry<Function<Jedis, Object>, Object> v : cmds.entrySet()) {
+            Object res = v.getKey().apply(jedis);
+            assertEquals(res, v.getValue(), "Mismatch in redis verification");
+        }
+    }
+
+    private Subscription createSubscribers(String[] users,
+                                           Wrapper<Boolean> subscrFlag,
+                                           CountDownLatch subscriberLatch) throws Exception {
+        JedisPubSub pubsub = new JedisPubSub() {
+            @SneakyThrows
+            @Override
+            public void onMessage(String channel, String message) {
+                log.debug("Callback received: {} -> {}", channel, message);
+                log.debug("Users to check: {}", Arrays.toString(users));
+                String[] recdUsers = objectMapper.readerFor(String[].class).readValue(message);
+                if (channel.equals(RedisNotifierClient.CALLBACK_CHANNEL)) {
+                    subscrFlag.set(true);
+                    for (String u : users) {
+                        if (!ArrayUtils.contains(recdUsers, redisUsername(u))) {
+                            subscrFlag.set(false);
+                        }
+                    }
+                }
+                subscriberLatch.countDown();
+            }
+        };
+        CountDownLatch latch = new CountDownLatch(1);
+        final Jedis jedis = new Jedis("localhost", redisServer.ports().get(0));
+        Future<?> fut = ForkJoinPool.commonPool().submit(() -> {
+            latch.countDown();
+            jedis.subscribe(pubsub, RedisNotifierClient.CALLBACK_CHANNEL);
+        });
+        latch.await();
+        return new Subscription(fut, pubsub);
+    }
+
+    private Subscription createSubscribers(String user,
+                                           Wrapper<Boolean> subscrFlag,
+                                           CountDownLatch subscriberLatch) throws Exception {
+        return createSubscribers(new String[]{user}, subscrFlag, subscriberLatch);
+    }
+
 
     @Test
     public void testNotifyUsers_Success() throws Exception {
@@ -137,18 +203,19 @@ public class RedisNotifierClientTest {
         Wrapper<Boolean> exFlag = new Wrapper<>(Boolean.FALSE);
         Wrapper<Boolean> subscrFlag = new Wrapper<>(Boolean.FALSE);
         CountDownLatch subscrLatch = new CountDownLatch(1);
-        Subscription subscription = redisSubscriber.set(user, subscrFlag, subscrLatch);
-        doReturn(new Jedis(redisServer.getHost(), redisServer.getBindPort()))
+        Subscription subscription = createSubscribers(user, subscrFlag, subscrLatch);
+        RedisServer redisServer = this.redisServer;
+        doReturn(new Jedis("localhost", redisServer.ports().get(0)))
             .when(jedisFactory).get();
 
         client.notifyUsers(exceptionHandler(exFlag), notification, user);
-        subscrLatch.await(100, TimeUnit.MILLISECONDS);
+        subscrLatch.await(1000, TimeUnit.MILLISECONDS);
 
         assertNotNull(notification.getId());
         String notfnJson = objectMapper.writeValueAsString(notification);
-        verifier.verify(Arrays.asList(Verification.of(
-            jedis -> jedis.hget(redisUsername(user), notification.getId()), notfnJson)
-        ));
+        verify(new HashMap<Function<Jedis, Object>, Object>() {{
+            put(jedis -> jedis.hget(redisUsername(user), notification.getId()), notfnJson);
+        }});
 
         assertFalse(exFlag.get());
         assertTrue(subscrFlag.get());
@@ -162,18 +229,18 @@ public class RedisNotifierClientTest {
         Wrapper<Boolean> exFlag = new Wrapper<>(Boolean.FALSE);
         Wrapper<Boolean> subscrFlag = new Wrapper<>(Boolean.FALSE);
         CountDownLatch subscrLatch = new CountDownLatch(1);
-        Subscription subscription = redisSubscriber.set(user, subscrFlag, subscrLatch);
+        Subscription subscription = createSubscribers(user, subscrFlag, subscrLatch);
         doThrow(JedisConnectionException.class).doReturn(jedis)
             .when(jedisFactory).get();
 
         client.notifyUsers(exceptionHandler(exFlag), notification, user);
-        subscrLatch.await(100, TimeUnit.MILLISECONDS);
+        subscrLatch.await(1000, TimeUnit.MILLISECONDS);
 
         assertNotNull(notification.getId());
         String notfnJson = objectMapper.writeValueAsString(notification);
-        verifier.verify(Arrays.asList(Verification.of(
-            jedis -> jedis.hget(redisUsername(user), notification.getId()), notfnJson)
-        ));
+        verify(new HashMap<Function<Jedis, Object>, Object>() {{
+            put(jedis -> jedis.hget(redisUsername(user), notification.getId()), notfnJson);
+        }});
 
         assertFalse(exFlag.get());
         assertTrue(subscrFlag.get());
@@ -196,6 +263,42 @@ public class RedisNotifierClientTest {
     }
 
     @Test
+    public void testNotifyUserGroups() throws Exception {
+        Notification notification = randomNotification();
+        List<String> users = IntStream.range(0, 10)
+            .mapToObj(i -> randomUsername())
+            .collect(Collectors.toList());
+        String group = "group";
+        String query = "User Query";
+        Map<String, Object> paramMap = ImmutableMap.<String, Object>builder()
+            .put("foo", "bar")
+            .build();
+        Wrapper<Boolean> exFlag = new Wrapper<>(false);
+        Wrapper<Boolean> subscrFlag = new Wrapper<>(false);
+        CountDownLatch subscrLatch = new CountDownLatch(1);
+        Subscription subscription =
+            createSubscribers(users.toArray(new String[0]), subscrFlag, subscrLatch);
+
+        doReturn(query).when(userDataMapper).getUserGroupQuery(eq(group));
+        doReturn(users).when(userDataMapper).getUsers(eq(query), eq(paramMap));
+        doReturn(jedis).when(jedisFactory).get();
+
+        client.notifyGroup(exceptionHandler(exFlag), notification, group, paramMap);
+        subscrLatch.await(1000, TimeUnit.MILLISECONDS);
+
+        String notfnJson = objectMapper.writeValueAsString(notification);
+        Map<Function<Jedis, Object>, Object> verificationMap = new HashMap<>();
+        for (String u : users) {
+            verificationMap.put(jedis -> jedis.hget(redisUsername(u), notification.getId()),
+                notfnJson);
+        }
+        verify(verificationMap);
+        assertFalse(exFlag.get());
+        assertTrue(subscrFlag.get());
+        subscription.close();
+    }
+
+    @Test
     public void testUpdateStatus_Success() throws Exception {
         Notification notification = randomNotification();
         notification.setId(String.valueOf(jedis.incr(RedisNotifierClient.ID_KEY)));
@@ -204,21 +307,21 @@ public class RedisNotifierClientTest {
         Wrapper<Boolean> subFlag = new Wrapper<>(Boolean.FALSE);
         CountDownLatch subLatch = new CountDownLatch(1);
         doReturn(jedis).when(jedisFactory).get();
-        Subscription subscription = redisSubscriber.set(user, subFlag, subLatch);
+        Subscription subscription = createSubscribers(user, subFlag, subLatch);
         jedis.hset(redisUsername(user), notification.getId(),
             objectMapper.writeValueAsString(notification));
 
         client.updateStatus(exceptionHandler(exFlag),
             new String[]{notification.getId()},
             user, Notification.Status.ACKNOWLEDGED);
-        subLatch.await(100, TimeUnit.MILLISECONDS);
+        subLatch.await(1000, TimeUnit.MILLISECONDS);
 
         Notification expect = TestUtils.clone(notification)
             .setStatus(Notification.Status.ACKNOWLEDGED);
         String expectJson = objectMapper.writeValueAsString(expect);
-        verifier.verify(Arrays.asList(Verification.of(
-            jedis -> jedis.hget(redisUsername(user), notification.getId()), expectJson)
-        ));
+        verify(new HashMap<Function<Jedis, Object>, Object>() {{
+            put(jedis -> jedis.hget(redisUsername(user), notification.getId()), expectJson);
+        }});
         assertFalse(exFlag.get());
         assertTrue(subFlag.get());
         subscription.close();
@@ -233,21 +336,21 @@ public class RedisNotifierClientTest {
         Wrapper<Boolean> subFlag = new Wrapper<>(Boolean.FALSE);
         CountDownLatch subLatch = new CountDownLatch(1);
         doThrow(JedisConnectionException.class).doReturn(jedis).when(jedisFactory).get();
-        Subscription subscription = redisSubscriber.set(user, subFlag, subLatch);
+        Subscription subscription = createSubscribers(user, subFlag, subLatch);
         jedis.hset(redisUsername(user), notification.getId(),
             objectMapper.writeValueAsString(notification));
 
         client.updateStatus(exceptionHandler(exFlag),
             new String[]{notification.getId()},
             user, Notification.Status.ACKNOWLEDGED);
-        subLatch.await(100, TimeUnit.MILLISECONDS);
+        subLatch.await(1000, TimeUnit.MILLISECONDS);
 
         Notification expect = TestUtils.clone(notification)
             .setStatus(Notification.Status.ACKNOWLEDGED);
         String expectJson = objectMapper.writeValueAsString(expect);
-        verifier.verify(Arrays.asList(Verification.of(
-            jedis -> jedis.hget(redisUsername(user), notification.getId()), expectJson)
-        ));
+        verify(new HashMap<Function<Jedis, Object>, Object>() {{
+            put(jedis -> jedis.hget(redisUsername(user), notification.getId()), expectJson);
+        }});
         assertFalse(exFlag.get());
         assertTrue(subFlag.get());
         subscription.close();
@@ -272,18 +375,109 @@ public class RedisNotifierClientTest {
 
 
         String expectJson = objectMapper.writeValueAsString(notification);
-        verifier.verify(Arrays.asList(Verification.of(
-            jedis -> jedis.hget(redisUsername(user), notification.getId()), expectJson)
-        ));
+        verify(new HashMap<Function<Jedis, Object>, Object>() {{
+            put(jedis -> jedis.hget(redisUsername(user), notification.getId()), expectJson);
+        }});
         assertTrue(exFlag.get());
         assertFalse(subFlag.get());
     }
 
+    @Test
+    public void testGetAllNotifications_Success() throws Exception {
+        String user = randomUsername();
+        List<Notification> expect = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            Notification n = randomNotification();
+            long id = jedis.incr(RedisNotifierClient.ID_KEY);
+            expect.add(n);
+            n.setId(String.valueOf(id));
+            String json = objectMapper.writeValueAsString(n);
+            jedis.hset(redisUsername(user), String.valueOf(id), json);
+        }
+        Wrapper<Boolean> exFlag = new Wrapper<>(false);
+
+        doReturn(jedis).when(jedisFactory).get();
+        CompletableFuture<Collection<Notification>> cf =
+            client.getNotifications(exceptionHandler(exFlag), user);
+        Collection<Notification> returned = cf.get();
+
+        for (Notification x : returned) {
+            assertTrue(expect.contains(x));
+        }
+        assertFalse(exFlag.get());
+    }
+
+    @Test
+    public void testGetAllNotifications_SuccessAfterRetry() throws Exception {
+        String user = randomUsername();
+        List<Notification> expect = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            Notification n = randomNotification();
+            long id = jedis.incr(RedisNotifierClient.ID_KEY);
+            expect.add(n);
+            n.setId(String.valueOf(id));
+            String json = objectMapper.writeValueAsString(n);
+            jedis.hset(redisUsername(user), String.valueOf(id), json);
+        }
+        Wrapper<Boolean> exFlag = new Wrapper<>(false);
+
+        doThrow(JedisConnectionException.class).doReturn(jedis).when(jedisFactory).get();
+        CompletableFuture<Collection<Notification>> cf =
+            client.getNotifications(exceptionHandler(exFlag), user);
+        Collection<Notification> returned = cf.get();
+
+        for (Notification x : returned) {
+            assertTrue(expect.contains(x));
+        }
+        assertFalse(exFlag.get());
+    }
+
+
+    @Test
+    public void testGetAllNotifications_Failure() throws Exception {
+        String user = randomUsername();
+        List<Notification> expect = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            Notification n = randomNotification();
+            long id = jedis.incr(RedisNotifierClient.ID_KEY);
+            expect.add(n);
+            n.setId(String.valueOf(id));
+            String json = objectMapper.writeValueAsString(n);
+            jedis.hset(redisUsername(user), String.valueOf(id), json);
+        }
+        Wrapper<Boolean> exFlag = new Wrapper<>(false);
+
+        doThrow(JedisConnectionException.class).when(jedisFactory).get();
+        CompletableFuture<Collection<Notification>> cf =
+            client.getNotifications(exceptionHandler(exFlag), user);
+        try {
+            cf.get();
+            fail("Should have failed in get");
+        } catch (ExecutionException ex) {
+            assertTrue(true);
+        }
+        assertTrue(exFlag.get());
+    }
+
     @AfterClass
-    public void tearDown() {
-        this.redisServer.stop();
+    public void tearDown(ITestContext context) {
+        this.jedis.close();
+        if (this.redisServer.isActive()) {
+            this.redisServer.stop();
+        }
         log.info("Mock redis server has been stopped");
     }
 
 
+    @AllArgsConstructor
+    public static class Subscription implements AutoCloseable {
+        private Future<?> future;
+        private JedisPubSub pubSub;
+
+        @Override
+        public void close() throws Exception {
+            this.pubSub.unsubscribe(RedisNotifierClient.CALLBACK_CHANNEL);
+            this.future.cancel(true);
+        }
+    }
 }

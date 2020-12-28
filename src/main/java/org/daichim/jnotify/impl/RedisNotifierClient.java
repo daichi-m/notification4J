@@ -2,8 +2,6 @@ package org.daichim.jnotify.impl;
 
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.ObjectWriter;
 import com.google.common.collect.ImmutableMap;
 import io.github.resilience4j.core.IntervalFunction;
 import io.github.resilience4j.retry.Retry;
@@ -28,6 +26,8 @@ import org.quartz.SimpleScheduleBuilder;
 import org.quartz.Trigger;
 import org.quartz.TriggerBuilder;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.ScanParams;
+import redis.clients.jedis.ScanResult;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 import redis.clients.jedis.exceptions.JedisException;
 
@@ -35,15 +35,17 @@ import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 import javax.inject.Named;
-import java.io.*;
+import java.io.IOException;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -144,9 +146,8 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
                              String user, Notification.Status updatedStatus) {
 
         NotificationException wrappedException = null;
-        CheckedRunnable runnable = () -> {
-            updateStatusWithException(notificationIds, user, updatedStatus);
-        };
+        CheckedRunnable runnable =
+            () -> updateStatusWithException(notificationIds, user, updatedStatus);
         CheckedRunnable retriedRunnable = Retry.decorateCheckedRunnable(createRetryFromConfig(),
             runnable);
         Try.run(retriedRunnable)
@@ -185,8 +186,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
                 IntervalFunction.DEFAULT_MULTIPLIER,
                 configuration.getMaxBackOffDelayMillis()))
             .build();
-        Retry retry = Retry.of("retry", config);
-        return retry;
+        return Retry.of("retry", config);
     }
 
     /**
@@ -303,16 +303,25 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      */
     private Collection<Notification> getNotificationsSync(String userId)
         throws JedisException, NotificationException {
+
+        String cursor = ScanParams.SCAN_POINTER_START;
+        ScanParams batchSize = new ScanParams().count(100);
+        List<Notification> notifications = new ArrayList<>();
         try (Jedis jedis = jedisFactory.get()) {
             String redisKey = redisSafeUsername(userId);
-            Map<String, String> notfnJsons = jedis.hgetAll(redisKey);
-            Collection<Notification> notfns = notfnJsons.values().stream()
-                .map(serde::safeDeserialize)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .filter(n -> (!n.isExpired() && !n.isDeleted()))
-                .collect(Collectors.toList());
-            return notfns;
+            do {
+                ScanResult<Entry<String, String>> result =
+                    jedis.hscan(redisKey, cursor, batchSize);
+                cursor = result.getCursor();
+                List<Entry<String, String>> resultList = result.getResult();
+                notifications.addAll(resultList.stream()
+                    .map(e -> serde.safeDeserialize(e.getValue()))
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .filter(n -> (!n.isExpired() && !n.isDeleted()))
+                    .collect(Collectors.toList()));
+            } while (!cursor.equals(ScanParams.SCAN_POINTER_START));
+            return notifications;
         } catch (JedisException ex) {
             throw ex;
         } catch (Exception ex) {

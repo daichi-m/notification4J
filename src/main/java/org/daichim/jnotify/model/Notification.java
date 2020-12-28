@@ -110,15 +110,15 @@ public class Notification {
     }
 
     public enum Status {
-        NEW, NOT_ACKNOWLEDGED, ACKNOWLEDGED, DELETED;
+        NEW, NOT_ACKNOWLEDGED, ACKNOWLEDGED, DELETED
     }
 
     public enum Severity {
-        INFO, SUCCESS, WARNING, ERROR;
+        INFO, SUCCESS, WARNING, ERROR
     }
 
     public enum DisplayType {
-        INBOX, BANNER_DISMISS, BANNER_NONDISMISS, PAGE, POPUP;
+        INBOX, BANNER_DISMISS, BANNER_NONDISMISS, PAGE, POPUP
     }
 
 
