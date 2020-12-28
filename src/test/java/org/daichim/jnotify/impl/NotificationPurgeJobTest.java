@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.reflect.FieldUtils;
 import org.daichim.jnotify.model.Notification;
 import org.mockito.InjectMocks;
@@ -21,6 +22,7 @@ import java.lang.reflect.Field;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadLocalRandom;
@@ -35,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertTrue;
 
 @Slf4j
 public class NotificationPurgeJobTest {
@@ -76,12 +79,11 @@ public class NotificationPurgeJobTest {
     }
 
 
-    public void insertNotifications(ZonedDateTime expiry, Notification.Status status)
+    public void insertNotificationsForUsers( String[] users,
+                                             ZonedDateTime expiry,
+                                             Notification.Status status)
         throws Exception {
 
-        String[] users = IntStream.range(0, 5)
-            .mapToObj(i -> randomUsername())
-            .toArray(String[]::new);
         for (int i = 0; i < 50; i++) {
             Notification n = randomNotification();
             long id = jedis.incr(RedisNotifierClient.ID_KEY);
@@ -97,6 +99,10 @@ public class NotificationPurgeJobTest {
 
     @Test
     public void purgeTestSuccess() throws Exception {
+        String[] users = IntStream.range(0, 5)
+            .mapToObj(i -> randomUsername())
+            .toArray(String[]::new);
+
         JobExecutionContext ctxt = mock(JobExecutionContext.class);
         doReturn(new Date()).when(ctxt).getScheduledFireTime();
         doAnswer((Answer<Void>) inv -> {
@@ -104,10 +110,15 @@ public class NotificationPurgeJobTest {
             return callable.call();
         }).when(redisLock).executeUnderLock(any(), anyLong());
         doReturn(jedis).when(jedisFactory).get();
-        insertNotifications(ZonedDateTime.now().minus(10, ChronoUnit.MINUTES),
+        insertNotificationsForUsers(users,
+            ZonedDateTime.now().minus(10, ChronoUnit.MINUTES),
             Notification.Status.ACKNOWLEDGED);
         purgeJob.execute(ctxt);
 
+        for (String u : users) {
+            Map<String, String> notfn = jedis.hgetAll(redisUsername(u));
+            assertTrue(MapUtils.isEmpty(notfn));
+        }
     }
 
     @AfterClass
