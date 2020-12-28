@@ -66,7 +66,7 @@ public class NotificationSerDe {
             }
             return Optional.of(serializer.get().writeValueAsString(notification));
         } catch (IOException ex) {
-            log.warn("Deserialization error: {}", notification, ex);
+            log.warn("Serialization error: {}", notification, ex);
             return Optional.empty();
         }
     }

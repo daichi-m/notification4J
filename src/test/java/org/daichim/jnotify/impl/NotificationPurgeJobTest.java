@@ -12,10 +12,12 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.stubbing.Answer;
 import org.quartz.JobExecutionContext;
+import org.quartz.JobExecutionException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import redis.clients.jedis.Jedis;
+import redis.clients.jedis.exceptions.JedisException;
 import redis.embedded.RedisServer;
 
 import java.lang.reflect.Field;
@@ -36,7 +38,9 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 @Slf4j
@@ -98,7 +102,7 @@ public class NotificationPurgeJobTest {
     }
 
     @Test
-    public void purgeTestSuccess() throws Exception {
+    public void purgeTestExpired() throws Exception {
         String[] users = IntStream.range(0, 5)
             .mapToObj(i -> randomUsername())
             .toArray(String[]::new);
@@ -119,6 +123,67 @@ public class NotificationPurgeJobTest {
             Map<String, String> notfn = jedis.hgetAll(redisUsername(u));
             assertTrue(MapUtils.isEmpty(notfn));
         }
+    }
+
+    @Test
+    public void purgeTestDeleted() throws Exception {
+        String[] users = IntStream.range(0, 5)
+            .mapToObj(i -> randomUsername())
+            .toArray(String[]::new);
+
+        JobExecutionContext ctxt = mock(JobExecutionContext.class);
+        doReturn(new Date()).when(ctxt).getScheduledFireTime();
+        doAnswer((Answer<Void>) inv -> {
+            Callable<Void> callable = inv.getArgument(0);
+            return callable.call();
+        }).when(redisLock).executeUnderLock(any(), anyLong());
+        doReturn(jedis).when(jedisFactory).get();
+        insertNotificationsForUsers(users,
+            ZonedDateTime.now().plus(10, ChronoUnit.MINUTES),
+            Notification.Status.DELETED);
+        purgeJob.execute(ctxt);
+
+        for (String u : users) {
+            Map<String, String> notfn = jedis.hgetAll(redisUsername(u));
+            assertTrue(MapUtils.isEmpty(notfn));
+        }
+    }
+
+    @Test
+    public void purgeTestNoPurge() throws Exception {
+        String[] users = IntStream.range(0, 5)
+            .mapToObj(i -> randomUsername())
+            .toArray(String[]::new);
+
+        JobExecutionContext ctxt = mock(JobExecutionContext.class);
+        doReturn(new Date()).when(ctxt).getScheduledFireTime();
+        doAnswer((Answer<Void>) inv -> {
+            Callable<Void> callable = inv.getArgument(0);
+            return callable.call();
+        }).when(redisLock).executeUnderLock(any(), anyLong());
+        doReturn(jedis).when(jedisFactory).get();
+        insertNotificationsForUsers(users,
+            ZonedDateTime.now().plus(10, ChronoUnit.MINUTES),
+            Notification.Status.ACKNOWLEDGED);
+        purgeJob.execute(ctxt);
+
+        for (String u : users) {
+            Map<String, String> notfn = jedis.hgetAll(redisUsername(u));
+            assertTrue(MapUtils.isNotEmpty(notfn));
+            assertEquals(notfn.size(), 10);
+        }
+    }
+
+    @Test(expectedExceptions = JobExecutionException.class)
+    public void purgeTestFailed() throws Exception {
+        JobExecutionContext ctxt = mock(JobExecutionContext.class);
+        doReturn(new Date()).when(ctxt).getFireTime();
+        doThrow(JedisException.class).when(jedisFactory).get();
+        doAnswer((Answer<Void>) inv -> {
+            Callable<Void> callable = inv.getArgument(0);
+            return callable.call();
+        }).when(redisLock).executeUnderLock(any(), anyLong());
+        purgeJob.execute(ctxt);
     }
 
     @AfterClass
