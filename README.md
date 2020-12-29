@@ -111,7 +111,7 @@ public void somethingHappened() {
        .setMesage("Something terrible happened")
        .setDescription("So long and thanks for all the fish.")
        .setSeverity(Notification.Severity.INFO)
-       .setSource("testservice")
+       .setSource("Vogon")
        .setStatus(Notification.Status.NOT_ACKNOWLEDGED)
        .expireAfter(Duration.ofMinutes(10));
    
@@ -126,3 +126,8 @@ public void somethingHappened() {
 ### Cleaning up the expired notifications
 JNotify integrates with Quartz scheduler that runs a scheduled purge thread every 30minutes that scans the backend store and cleans up all expired and deleted notifications. 
 No additional steps are required from the user to enable this. 
+
+
+## LICENSE
+
+JNotify is licensed under MIT License. Please go through the [LICENSE](LICENSE) file to understand what it covers. 
