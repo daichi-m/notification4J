@@ -1,11 +1,11 @@
 language: java
+os: linux
 dist: xenial
 
 jdk:
   - openjdk8
 
 script:
-  - jdk_switcher use oraclejdk8
   - mvn clean install
   - mvn clean test
 
