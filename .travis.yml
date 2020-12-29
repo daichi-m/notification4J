@@ -6,8 +6,8 @@ jdk:
   - openjdk8
 
 script:
-  - mvn clean test -Dsurefire.timeout=300
-  - mvn install
+#  - mvn clean test -Dsurefire.timeout=300
+  - mvn clean install -Dsurefire.timeout=300
 
 after_script:
   - bash <(curl -s https://codecov.io/bash)
