@@ -6,7 +6,7 @@ jdk:
   - openjdk8
 
 script:
-  - mvn clean test
+  - mvn clean test -Dsurefire.timeout=300
   - mvn install
 
 after_script:
