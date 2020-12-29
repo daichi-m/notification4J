@@ -1,0 +1,9 @@
+language: java
+dist: bionic
+
+script:
+  - jdk_switcher use oraclejdk8
+  - mvn clean install
+
+after_script:
+  - bash <(curl -s https://codecov.io/bash)
