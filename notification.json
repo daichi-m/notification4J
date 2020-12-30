@@ -1,0 +1,9 @@
+{
+    "ack": false,
+    "details": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris accumsan ex sed tincidunt. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut tincidunt, ligula non tincidunt laoreet, lectus nulla ornare augue, ut suscipit ipsum augue in tortor. Cras justo ex, faucibus sit amet arcu vel, pulvinar lacinia ipsum",
+    "expiryTsMillis": 1606041718000,
+    "id": "8587170510393202332",
+    "message": "This is a sample notification",
+    "redirect": "https://www.google.com",
+    "timestampMillis": 1574937718000
+}
