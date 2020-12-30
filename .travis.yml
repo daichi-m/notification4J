@@ -7,7 +7,7 @@ jdk:
 
 script:
 #  - mvn clean test -Dsurefire.timeout=300
-  - mvn clean install -Dsurefire.timeout=300
+  - mvn clean install -Dsurefire.timeout=600
 
 after_script:
   - bash <(curl -s https://codecov.io/bash)
