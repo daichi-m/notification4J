@@ -12,9 +12,15 @@ before_install:
 install:
   mvn --settings .maven.xml install -DskipTests=true -Dgpg.skip -Dmaven.javadoc.skip=true -B -V
 
-## Build and release to maven central
-script:
-  mvn clean deploy --settings .maven.xml -DskipTests=true -B -U -Prelease
+jobs:
+  include:
+    - stage: snapshot
+      name: "Build and Deploy Snapshot"
+      script: mvn clean deploy --settings .maven.xml -Prelease
+    - stage: release
+      if: branch == main AND commit_message = "Perform release"
+      name: "Release"
+      script: mvn --settings .maven.xml nexus-staging:release
 
 
 after_script:
