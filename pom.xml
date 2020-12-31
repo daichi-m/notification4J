@@ -186,8 +186,8 @@
                 <version>0.8.6</version>
                 <configuration>
                     <excludes>
-                        <exclude>org/daichim/jnotify/model/*</exclude>
-                        <exclude>org/daichim/jnotify/exception/*</exclude>
+                        <exclude>io/github/daichim/notification4J/model/*</exclude>
+                        <exclude>io/github/daichim/notification4J/exception/*</exclude>
                     </excludes>
                 </configuration>
                 <executions>
