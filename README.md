@@ -1,5 +1,5 @@
 [![Build Status](https://travis-ci.com/daichi-m/jnotify.svg?branch=develop)](https://travis-ci.com/daichi-m/jnotify) 
-[![codecov](https://codecov.io/gh/daichi-m/jnotify/branch/develop/graph/badge.svg?token=V1KZQFCKPG)](https://codecov.io/gh/daichi-m/jnotify)
+[![codecov](https://codecov.io/gh/daichi-m/jnotify/branch/main/graph/badge.svg?token=V1KZQFCKPG)](https://codecov.io/gh/daichi-m/jnotify)
 
 # JNotify
 
