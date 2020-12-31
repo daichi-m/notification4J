@@ -9,14 +9,6 @@
         </server>
     </servers>
 
-    <!--
-    <server>
-        <id>${server}</id>
-        <username>IcvQfW24</username>
-        <password>o58hRYCNXEhONOV4Hf6Mvr7cxZJOC+k5jS8GhdzkkCxy</password>
-    </server>
--->
-
     <profiles>
         <profile>
             <id>ossrh</id>
