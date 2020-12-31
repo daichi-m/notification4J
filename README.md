@@ -70,7 +70,11 @@ The `Module` can bind the `NotificationConfiguration` class to an initialized in
 ```
 public class AwesomeModule extends AbstractModule {
     public void configure() {
-        // Your awesome bindings
+        /* 
+            Your awesome bindings
+            ....
+        */
+        
         NotificationConfiguration config = new NotificationConfiguration()
            .setRedisHost("localhost")
            .setRedisPort(redisServer.ports().get(0))
@@ -118,7 +122,8 @@ public void somethingHappened() {
        .setStatus(Notification.Status.NOT_ACKNOWLEDGED)
        .expireAfter(Duration.ofMinutes(10));
    
-    // If you want to use the default error handler (which just logs an error message using Slf4J logger).
+    // If you want to use the default error handler 
+    // (which just logs an error message using Slf4J logger).
     client.notifyUser("ford_prefect", notfn);
     
     // If you want to handle the error yourself.
