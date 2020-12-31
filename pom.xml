@@ -1,17 +1,34 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>org.daichim.jnotify</groupId>
-    <artifactId>jnotify</artifactId>
+    <groupId>io.github.daichi-m</groupId>
+    <artifactId>notification4J</artifactId>
     <version>0.1.1-SNAPSHOT</version>
-    <name>jnotify</name>
+    <name>notification4J</name>
+
+    <developers>
+        <developer>
+            <id>daichi-m</id>
+            <name>Sohom Majumdar</name>
+            <email>frendztitan@gmail.com</email>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/daichi-m/notification4J.git</connection>
+        <url>https://github.com/daichi-m/notification4J.git</url>
+    </scm>
+    <ciManagement>
+        <url>https://travis-ci.com/github/daichi-m/notification4J</url>
+    </ciManagement>
 
     <properties>
         <java.version>1.8</java.version>
         <slf4j.version>1.7.25</slf4j.version>
         <jackson.version>2.10.0</jackson.version>
         <jedis.version>[3.1.0,)</jedis.version>
-        <lombok.version>1.16.20</lombok.version>
+        <lombok.version>1.18.16</lombok.version>
         <javax.inject.version>1</javax.inject.version>
         <mybatis.version>3.4.6</mybatis.version>
         <commons.lang3.version>3.7</commons.lang3.version>
@@ -30,7 +47,7 @@
         <embedded.redis.version>0.7.3</embedded.redis.version>
         <lorem.version>2.1</lorem.version>
     </properties>
-         
+
     <dependencies>
         <dependency>
             <groupId>redis.clients</groupId>
@@ -41,7 +58,6 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -116,18 +132,18 @@
             <version>${testng.version}</version>
             <scope>test</scope>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>com.google.inject</groupId>-->
-<!--            <artifactId>guice</artifactId>-->
-<!--            <version>${guice.version}</version>-->
-<!--            <scope>test</scope>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>com.netflix.governator</groupId>-->
-<!--            <artifactId>governator</artifactId>-->
-<!--            <version>${governator.version}</version>-->
-<!--            <scope>test</scope>-->
-<!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>com.google.inject</groupId>-->
+        <!--            <artifactId>guice</artifactId>-->
+        <!--            <version>${guice.version}</version>-->
+        <!--            <scope>test</scope>-->
+        <!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>com.netflix.governator</groupId>-->
+        <!--            <artifactId>governator</artifactId>-->
+        <!--            <version>${governator.version}</version>-->
+        <!--            <scope>test</scope>-->
+        <!--        </dependency>-->
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
@@ -170,8 +186,8 @@
                 <version>0.8.6</version>
                 <configuration>
                     <excludes>
-                        <exclude>org/daichim/jnotify/model/*</exclude>
-                        <exclude>org/daichim/jnotify/exception/*</exclude>
+                        <exclude>io/github/daichim/notification4J/model/*</exclude>
+                        <exclude>io/github/daichim/notification4J/exception/*</exclude>
                     </excludes>
                 </configuration>
                 <executions>
