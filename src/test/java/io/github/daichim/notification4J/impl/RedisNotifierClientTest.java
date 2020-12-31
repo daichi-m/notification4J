@@ -53,6 +53,7 @@ import java.util.stream.IntStream;
 import static io.github.daichim.notification4J.utils.TestUtils.randomNotification;
 import static io.github.daichim.notification4J.utils.TestUtils.randomUsername;
 import static io.github.daichim.notification4J.utils.TestUtils.redisUsername;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -468,7 +469,8 @@ public class RedisNotifierClientTest {
     }
 
     @AfterClass
-    public void tearDown(ITestContext context) {
+    public void tearDown() throws Exception {
+        SECONDS.sleep(2);
         this.jedis.close();
         if (this.redisServer.isActive()) {
             this.redisServer.stop();
