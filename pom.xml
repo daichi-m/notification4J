@@ -28,7 +28,7 @@
         <slf4j.version>1.7.25</slf4j.version>
         <jackson.version>2.10.0</jackson.version>
         <jedis.version>[3.1.0,)</jedis.version>
-        <lombok.version>1.16.20</lombok.version>
+        <lombok.version>1.18.16</lombok.version>
         <javax.inject.version>1</javax.inject.version>
         <mybatis.version>3.4.6</mybatis.version>
         <commons.lang3.version>3.7</commons.lang3.version>
@@ -58,7 +58,6 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
