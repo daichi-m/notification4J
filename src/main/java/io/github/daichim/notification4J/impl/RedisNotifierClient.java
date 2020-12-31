@@ -298,6 +298,8 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
             String callbackJson =
                 objectMapper.writeValueAsString(Collections.singletonList(redisUser));
             jedis.publish(CALLBACK_CHANNEL, callbackJson);
+            log.debug("Inserted callback into Redis for status update: {} -> {}",
+                CALLBACK_CHANNEL, callbackJson);
         } catch (IOException ex) {
             throw new NotificationException("Unable to update notification status", ex);
         } catch (JedisException | NotificationException ex) {
