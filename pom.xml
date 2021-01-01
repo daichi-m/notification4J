@@ -33,7 +33,7 @@
     </distributionManagement>
 
     <scm>
-        <connection>scm:git:https://github.com/daichi-m/notification4J.git</connection>
+        <connection>scm:git:https://${env.GITHUB_TOKEN}@github.com/daichi-m/notification4J.git</connection>
         <url>https://github.com/daichi-m/notification4J</url>
       <tag>HEAD</tag>
   </scm>
