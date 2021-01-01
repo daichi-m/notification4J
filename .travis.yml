@@ -41,7 +41,7 @@ jobs:
         - echo "TRAVIS_JOB_NAME=${TRAVIS_JOB_NAME}"
         - echo "TRAVIS_JOB_NUMBER=${TRAVIS_JOB_NUMBER}"
 #        - mvn --settings .maven.xml release:prepare release:perform -B
-        - mvn --settings .maven.xml clean deploy nexus-staging:release -B
+        - mvn --settings .maven.xml clean release:perform deploy nexus-staging:release -B
 
 after_script:
   - bash <(curl -s https://codecov.io/bash)
