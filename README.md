@@ -1,5 +1,6 @@
 [![Build Status](https://travis-ci.com/daichi-m/notification4J.svg?branch=main)](https://travis-ci.com/daichi-m/notification4J)
 [![codecov](https://codecov.io/gh/daichi-m/notification4J/branch/main/graph/badge.svg?token=V1KZQFCKPG)](https://codecov.io/gh/daichi-m/notification4J)
+[![javadoc](https://javadoc.io/badge2/io.github.daichi-m/notification4J/javadoc.svg)](https://javadoc.io/doc/io.github.daichi-m/notification4J)
 
 # JNotify
 
