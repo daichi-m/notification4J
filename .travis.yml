@@ -13,7 +13,7 @@ before_install:
   - echo $GPG_OWNERTRUST | base64 --decode | $GPG_EXECUTABLE --import-ownertrust
 
 install:
-  - git clone --depth=50 --branch=${TRAVIS_BRANCH} https://github.com/daichi-m/notification4J.git daichi-m/notification4J.git
+  - git clone --depth=50 --branch=${TRAVIS_BRANCH} https://${GITHUB_TOKEN}@github.com/daichi-m/notification4J.git daichi-m/notification4J.git
   - cd daichi-m/notification4J.git
   - mvn --settings .maven.xml install -DskipTests=true -Dgpg.skip -Dmaven.javadoc.skip=true -B -V
 
