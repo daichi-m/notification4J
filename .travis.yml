@@ -10,8 +10,7 @@ before_install:
   - echo $GPG_OWNERTRUST | base64 --decode | $GPG_EXECUTABLE --import-ownertrust
 
 
-install:
-  mvn --settings .maven.xml install -DskipTests=true -Dgpg.skip -Dmaven.javadoc.skip=true -B -V
+
 
 jobs:
   include:
@@ -25,16 +24,19 @@ jobs:
         - echo "TRAVIS_JOB_NAME=${TRAVIS_JOB_NAME}"
         - echo "TRAVIS_JOB_NUMBER=${TRAVIS_JOB_NUMBER}"
     - stage: snapshot
+      install: mvn --settings .maven.xml install -DskipTests=true -Dgpg.skip -Dmaven.javadoc.skip=true -B -V
+      if: NOT(branch == main AND commit_message = "Perform release")
       name: "Build and Deploy Snapshot"
       script: mvn --settings .maven.xml clean deploy -Prelease
       after_script:
         - bash <(curl -s https://codecov.io/bash)
     - stage: release
+      install: mvn --settings .maven.xml install -DskipTests=true -Dgpg.skip -Dmaven.javadoc.skip=true -B -V
       if: branch == main AND commit_message = "Perform release"
       name: "Release"
       script:
-        - mvn --settings .maven.xml release:prepare release:perform
-        - mvn --settings .maven.xml clean deploy
-        - mvn --settings .maven.xml nexus-staging:release
+        - mvn --settings .maven.xml release:prepare release:perform -B
+        - mvn --settings .maven.xml clean deploy -B
+        - mvn --settings .maven.xml nexus-staging:release -B
       after_script:
         - bash <(curl -s https://codecov.io/bash)
