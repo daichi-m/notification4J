@@ -1,10 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.daichi-m</groupId>
     <artifactId>notification4J</artifactId>
-    <version>0.1.3-SNAPSHOT</version>
+    <version>0.1.3</version>
     <name>notification4J</name>
 
     <developers>
@@ -36,7 +35,8 @@
     <scm>
         <connection>scm:git:https://github.com/daichi-m/notification4J.git</connection>
         <url>https://github.com/daichi-m/notification4J</url>
-    </scm>
+      <tag>notification4J-0.1.3</tag>
+  </scm>
 
     <ciManagement>
         <url>https://travis-ci.com/github/daichi-m/notification4J</url>
