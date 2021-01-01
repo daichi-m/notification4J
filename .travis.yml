@@ -12,8 +12,6 @@ before_install:
 install:
   - mvn --settings .maven.xml install -DskipTests=true -Dgpg.skip -Dmaven.javadoc.skip=true -B -V
 
-
-
 jobs:
   include:
 
@@ -42,7 +40,7 @@ jobs:
         - echo "TRAVIS_COMMIT_MESSAGE=${TRAVIS_COMMIT_MESSAGE}"
         - echo "TRAVIS_JOB_NAME=${TRAVIS_JOB_NAME}"
         - echo "TRAVIS_JOB_NUMBER=${TRAVIS_JOB_NUMBER}"
-        - mvn --settings .maven.xml release:prepare release:perform -B
+#        - mvn --settings .maven.xml release:prepare release:perform -B
         - mvn --settings .maven.xml clean deploy -B
         - mvn --settings .maven.xml nexus-staging:release -B
 
