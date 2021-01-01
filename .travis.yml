@@ -26,12 +26,15 @@ jobs:
         - echo "TRAVIS_JOB_NUMBER=${TRAVIS_JOB_NUMBER}"
     - stage: snapshot
       name: "Build and Deploy Snapshot"
-      script: mvn clean deploy --settings .maven.xml -Prelease
+      script: mvn --settings .maven.xml clean deploy -Prelease
+      after_script:
+        - bash <(curl -s https://codecov.io/bash)
     - stage: release
       if: branch == main AND commit_message = "Perform release"
       name: "Release"
-      script: mvn --settings .maven.xml nexus-staging:release
-
-
-after_script:
-  - bash <(curl -s https://codecov.io/bash)
+      script:
+        - mvn --settings .maven.xml release:prepare release:perform
+        - mvn --settings .maven.xml clean deploy
+        - mvn --settings .maven.xml nexus-staging:release
+      after_script:
+        - bash <(curl -s https://codecov.io/bash)
