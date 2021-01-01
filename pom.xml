@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.daichi-m</groupId>
     <artifactId>notification4J</artifactId>
-    <version>0.1.4-SNAPSHOT</version>
+    <version>0.1.5-SNAPSHOT</version>
 
     <name>notification4J</name>
     <description>A Java library for generating notifications in a microservices based app</description>
