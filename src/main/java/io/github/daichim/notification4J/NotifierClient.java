@@ -24,8 +24,8 @@ public interface NotifierClient {
      * @param notification The notification to send to all users
      * @param users        List of users to send the notification to
      */
-    default void notifyUsers(Notification notification, String... users) {
-        notifyUsers(getErrorHandler(), notification, users);
+    default CompletableFuture<Boolean> notifyUsers(Notification notification, String... users) {
+        return notifyUsers(getErrorHandler(), notification, users);
     }
 
     /**
@@ -37,7 +37,7 @@ public interface NotifierClient {
      * @param notification The notification to send to all users
      * @param users        List of users to send the notification to
      */
-    void notifyUsers(ErrorHandler onError, Notification notification, String... users);
+    CompletableFuture<Boolean> notifyUsers(ErrorHandler onError, Notification notification, String... users);
 
     /**
      * Notify a group of users about the notification. The notification group is used to identify
@@ -49,9 +49,10 @@ public interface NotifierClient {
      * @param queryParams  A {@link Map} of parameters to replace in the query for the user group
      *                     which is retrieved from the database.
      */
-    default void notifyGroup(Notification notification, String userGroup,
-                             Map<String, Object> queryParams) {
-        notifyGroup(getErrorHandler(), notification, userGroup, queryParams);
+    default CompletableFuture<Boolean> notifyGroup(Notification notification,
+                                                   String userGroup,
+                                                   Map<String, Object> queryParams) {
+        return notifyGroup(getErrorHandler(), notification, userGroup, queryParams);
     }
 
     /**
@@ -64,8 +65,8 @@ public interface NotifierClient {
      * @param queryParams  A {@link Map} of parameters to replace in the query for the user group
      *                     which is retrieved from the database.
      */
-    void notifyGroup(ErrorHandler onError, Notification notification, String userGroup,
-                     Map<String, Object> queryParams);
+    CompletableFuture<Boolean> notifyGroup(ErrorHandler onError, Notification notification,
+                                           String userGroup, Map<String, Object> queryParams);
 
     /**
      * Updates the status of the notification for a user.
@@ -74,8 +75,9 @@ public interface NotifierClient {
      * @param user            The user whose notification status is updated
      * @param status          The updated status of the notification
      */
-    default void updateStatus(String[] notificationIds, String user, Notification.Status status) {
-        updateStatus(getErrorHandler(), notificationIds, user, status);
+    default CompletableFuture<Boolean> updateStatus(String[] notificationIds,
+                                                    String user, Notification.Status status) {
+        return updateStatus(getErrorHandler(), notificationIds, user, status);
     }
 
     /**
@@ -86,8 +88,8 @@ public interface NotifierClient {
      * @param user            The user whose notification status is updated
      * @param updatedStatus   The updated status of the notification
      */
-    void updateStatus(ErrorHandler onError, String[] notificationIds, String user,
-                      Notification.Status updatedStatus);
+    CompletableFuture<Boolean> updateStatus(ErrorHandler onError, String[] notificationIds,
+                                            String user, Notification.Status updatedStatus);
 
     /**
      * Gets the list of all the notifications for the user. Based on implementation detail, this
@@ -101,7 +103,7 @@ public interface NotifierClient {
      * @throws UnsupportedOperationException If this method cannot be implemented for a specific
      *                                       backend.
      */
-    default CompletionStage<Collection<Notification>> getNotifications(String user)
+    default CompletableFuture<Collection<Notification>> getNotifications(String user)
         throws UnsupportedOperationException {
         return getNotifications(getErrorHandler(), user);
     }

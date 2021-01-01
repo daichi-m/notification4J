@@ -3,7 +3,13 @@ package io.github.daichim.notification4J.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import io.github.daichim.notification4J.ErrorHandler;
+import io.github.daichim.notification4J.NotificationGroupClient;
+import io.github.daichim.notification4J.NotifierClient;
+import io.github.daichim.notification4J.exception.NotificationException;
 import io.github.daichim.notification4J.model.Notification;
+import io.github.daichim.notification4J.model.NotificationConfiguration;
+import io.github.daichim.notification4J.mybatis.UserDataMapper;
 import io.github.resilience4j.core.IntervalFunction;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
@@ -12,12 +18,6 @@ import io.vavr.control.Try;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import io.github.daichim.notification4J.ErrorHandler;
-import io.github.daichim.notification4J.NotificationGroupClient;
-import io.github.daichim.notification4J.NotifierClient;
-import io.github.daichim.notification4J.exception.NotificationException;
-import io.github.daichim.notification4J.model.NotificationConfiguration;
-import io.github.daichim.notification4J.mybatis.UserDataMapper;
 import org.quartz.JobBuilder;
 import org.quartz.JobDetail;
 import org.quartz.Scheduler;
@@ -49,6 +49,7 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -121,23 +122,29 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
      * {@inheritDoc}
      */
     @Override
-    public void notifyUsers(final ErrorHandler onError, final Notification notification,
-                            String... users) {
+    public CompletableFuture<Boolean> notifyUsers(final ErrorHandler onError,
+                                               final Notification notification,
+                                               String... users) {
 
         List<String> redisUserKeys = Arrays.stream(users)
             .map(this::redisSafeUsername)
             .collect(Collectors.toList());
         CheckedRunnable writeRedis = Retry.decorateCheckedRunnable(createRetryFromConfig(),
             () -> writeToRedis(notification, redisUserKeys));
-        Try.run(writeRedis).recover(recoveryFunction(onError));
+        CompletableFuture<Boolean> completion = new CompletableFuture<>();
+        Try.run(writeRedis)
+            .onFailure(errorFunction(completion, onError))
+            .onSuccess(x -> completion.complete(true));
+        return completion;
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public void notifyGroup(ErrorHandler onError, Notification notification, String userGroup,
-                            Map<String, Object> queryParams) {
+    public CompletableFuture<Boolean> notifyGroup(ErrorHandler onError, Notification notification,
+                                                  String userGroup,
+                                                  Map<String, Object> queryParams) {
 
         CheckedRunnable runnable = () -> {
             String queryTemplate = userDataMapper.getUserGroupQuery(userGroup);
@@ -151,25 +158,34 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
             }
         };
 
+        CompletableFuture<Boolean> completion = new CompletableFuture<>();
         CheckedRunnable retriedRunnable =
             Retry.decorateCheckedRunnable(createRetryFromConfig(), runnable);
-        Try.run(retriedRunnable).recover(recoveryFunction(onError));
+        Try.run(retriedRunnable)
+            .onFailure(errorFunction(completion, onError))
+            .onSuccess(x -> completion.complete(true));
+        return completion;
     }
 
     /**
      * {@inheritDoc}
      */
     @Override
-    public void updateStatus(ErrorHandler onError, String[] notificationIds,
-                             String user, Notification.Status updatedStatus) {
+    public CompletableFuture<Boolean> updateStatus(ErrorHandler onError,
+                                                   String[] notificationIds,
+                                                   String user,
+                                                   Notification.Status updatedStatus) {
 
         NotificationException wrappedException = null;
+        CompletableFuture<Boolean> completion = new CompletableFuture<>();
         CheckedRunnable runnable =
             () -> updateStatusWithException(notificationIds, user, updatedStatus);
         CheckedRunnable retriedRunnable = Retry.decorateCheckedRunnable(createRetryFromConfig(),
             runnable);
         Try.run(retriedRunnable)
-            .recover(recoveryFunction(onError));
+            .onFailure(errorFunction(completion, onError))
+            .onSuccess(x -> completion.complete(true));
+        return completion;
     }
 
     @Override
@@ -182,8 +198,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
             createRetryFromConfig(), callable);
         Try.ofCallable(retriedCallable)
             .onSuccess(completion::complete)
-            .onFailure(completion::completeExceptionally)
-            .recover(recoveryFunction(onError));
+            .onFailure(errorFunction(completion, onError));
         return completion;
     }
 
@@ -210,13 +225,14 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
     /**
      * Create a {@link Function} to handle recovery in case of retry errors.
      */
-    private <T> Function<? super Throwable, ? extends T> recoveryFunction(ErrorHandler onError) {
+    private <T> Consumer<? super Throwable> errorFunction(CompletableFuture<T> completion,
+                                              ErrorHandler onError) {
         return ex -> {
             NotificationException nex = ex instanceof NotificationException
                 ? (NotificationException) ex
                 : new NotificationException(ex);
             onError.accept(nex);
-            return null;
+            completion.completeExceptionally(ex);
         };
     }
 
@@ -333,7 +349,7 @@ public class RedisNotifierClient implements NotifierClient, NotificationGroupCli
                 ScanResult<Entry<String, String>> result =
                     jedis.hscan(redisKey, cursor, batchSize);
                 cursor = result.getCursor();
-                List<Entry<String, String>> resultList = result.getResult();
+                Collection<Entry<String, String>> resultList = result.getResult();
                 notifications.addAll(resultList.stream()
                     .map(e -> serde.safeDeserialize(e.getValue()))
                     .filter(Optional::isPresent)

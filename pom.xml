@@ -151,12 +151,12 @@
             <version>${testng.version}</version>
             <scope>test</scope>
         </dependency>
-        <!--        <dependency>-->
-        <!--            <groupId>com.google.inject</groupId>-->
-        <!--            <artifactId>guice</artifactId>-->
-        <!--            <version>${guice.version}</version>-->
-        <!--            <scope>test</scope>-->
-        <!--        </dependency>-->
+<!--                <dependency>-->
+<!--                    <groupId>com.google.inject</groupId>-->
+<!--                    <artifactId>guice</artifactId>-->
+<!--                    <version>${guice.version}</version>-->
+<!--                    <scope>test</scope>-->
+<!--                </dependency>-->
         <!--        <dependency>-->
         <!--            <groupId>com.netflix.governator</groupId>-->
         <!--            <artifactId>governator</artifactId>-->
@@ -279,6 +279,11 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-release-plugin</artifactId>
+                <version>3.0.0-M1</version>
             </plugin>
         </plugins>
     </build>
