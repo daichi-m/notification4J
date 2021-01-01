@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.daichi-m</groupId>
     <artifactId>notification4J</artifactId>
-    <version>0.1.4</version>
+    <version>0.1.5-SNAPSHOT</version>
     <name>notification4J</name>
 
     <developers>
@@ -35,7 +35,7 @@
     <scm>
         <connection>scm:git:https://${env.GITHUB_TOKEN}@github.com/daichi-m/notification4J.git</connection>
         <url>https://github.com/daichi-m/notification4J</url>
-      <tag>notification4J-0.1.4</tag>
+      <tag>HEAD</tag>
   </scm>
 
     <ciManagement>
